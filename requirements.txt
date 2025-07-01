@@ -6,3 +6,4 @@ langchain-huggingface
 transformers
 langchain
 pytz
+sentence-transformers
