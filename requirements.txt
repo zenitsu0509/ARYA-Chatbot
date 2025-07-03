@@ -1,5 +1,6 @@
 ﻿streamlit
 python-dotenv
+langchain-huggingface
 langchain-pinecone
 pinecone-client
 langchain-groq
