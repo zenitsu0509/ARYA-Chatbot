@@ -14,8 +14,8 @@ class HostelPhotos:
         self.photos_directory = Path(photos_directory)
         self.photo_categories = {
             "rooms": ["rooms"],
-            "mess": ["dining", "kitchen", "food"],
-            "facilities": ["common_room", "washing_area", "sports","toilet"],
+            "mess": ["dining"],
+            "facilities": ["sports"],
             "exterior": ["building", "entrance", "garden"]
         }
         
@@ -115,6 +115,26 @@ class HostelPhotos:
         except Exception as e:
             logger.error(f"Error handling photo query: {str(e)}")
             return None
+
+    def get_photos(self, category: str, subcategory: Optional[str] = None) -> List[str]:
+        """
+        A tool to get paths to hostel photos.
+        :param category: The category of photos to get. Must be one of ['rooms', 'mess', 'facilities', 'exterior'].
+        :param subcategory: The optional subcategory of photos.
+                            For 'mess', can be ['dining'].
+                            For 'facilities', can be ['sports'].
+                            For 'exterior', can be ['building', 'entrance', 'garden'].
+        :return: A list of photo paths.
+        """
+        if category not in self.photo_categories:
+            return [f"Invalid category '{category}'. Valid categories are: {list(self.photo_categories.keys())}"]
+
+        if subcategory:
+            if subcategory not in self.photo_categories.get(category, []):
+                return [f"Invalid subcategory '{subcategory}' for category '{category}'. Valid subcategories are: {self.photo_categories.get(category)}"]
+            return self.get_photo_paths(category, subcategory)
+        else:
+            return self.get_photo_paths(category)
 
 def test_photo_handling():
     """Test function to verify photo queries."""

@@ -97,3 +97,50 @@ class MessMenu:
         
         logger.debug("Outside regular meal times, defaulting to morning")
         return 'morning'
+
+    def format_full_menu(self, weekly_menu: List[Dict]) -> str:
+        """Formats the full weekly menu into a readable string."""
+        response = ["📅 Here is the full weekly menu:\n"]
+        for day_menu in weekly_menu:
+            response.append(f"\n--- **{day_menu['day_of_week']}** ---")
+            response.append(f"🌅 Breakfast: {day_menu['morning_menu']}")
+            response.append(f"🌞 Lunch: {day_menu['evening_menu']}")
+            response.append(f"🌙 Dinner: {day_menu['night_menu']}")
+            if day_menu['dessert'] != 'OFF':
+                response.append(f"🍨 Dessert: {day_menu['dessert']}")
+        return "\n".join(response)
+
+    def get_menu(self, day: Optional[str] = None) -> str:
+        """
+        A tool to get the hostel mess menu.
+        :param day: The day to get the menu for. Can be a day of the week (e.g., 'Monday'), 'today', 'week', or None.
+                    If None or 'today', returns the current meal's menu.
+                    If 'week', returns the full weekly menu.
+        :return: A string containing the requested menu information.
+        """
+        if not day or day.lower() == 'today':
+            return self.get_current_menu()
+
+        day_lower = day.lower()
+
+        if day_lower == 'week':
+            weekly_menu = self.get_full_week_menu()
+            if weekly_menu:
+                return self.format_full_menu(weekly_menu)
+            return "Sorry, I couldn't retrieve the weekly menu."
+
+        # Handle specific day
+        day_capitalized = day_lower.capitalize()
+        day_menu = self.get_menu_for_day(day_capitalized)
+        if day_menu:
+            response = [
+                f"📅 Menu for {day_menu['day_of_week']}:",
+                f"🌅 Breakfast: {day_menu['morning_menu']}",
+                f"🌞 Lunch: {day_menu['evening_menu']}",
+                f"🌙 Dinner: {day_menu['night_menu']}"
+            ]
+            if day_menu['dessert'] != 'OFF':
+                response.append(f"🍨 Dessert: {day_menu['dessert']}")
+            return "\n".join(response)
+        
+        return f"Sorry, I couldn't find a menu for '{day}'."
