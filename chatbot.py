@@ -64,7 +64,7 @@ class AryaChatbot:
         try:
             return ChatGroq(
                 groq_api_key=self.groq_api_key,
-                model_name="llama-3.1-70b-versatile",
+                model_name="llama-3.1-8b-instant",
                 temperature=0.7,
                 max_tokens=512
             )
