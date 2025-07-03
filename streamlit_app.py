@@ -20,21 +20,32 @@ def initialize_chatbot(config):
         chatbot = AryaChatbot(
             pinecone_api_key=config['PINECONE_API_KEY'],
             pinecone_env=config['PINECONE_ENV'],
-            huggingface_api=config['HUGGING_FACE_API']
+            groq_api_key=config['GROQ_API_KEY']
         )
         chatbot.setup()
         return chatbot
     except Exception as e:
         st.error(f"Failed to initialize chatbot: {str(e)}")
+        # Log the full error for debugging
+        import traceback
+        st.error(f"Full error details: {traceback.format_exc()}")
         return None
 
 @st.cache_data(max_entries=100, ttl=3600)
-def get_cached_response(question: str) -> str:
+def get_cached_response(question: str, user_session_id: str) -> str:
     """Cache chatbot responses to reduce API calls and computation."""
     chatbot = st.session_state.chatbot
     if chatbot is None:
         raise ValueError("Chatbot not initialized")
-    return chatbot.get_response(question)
+    
+    try:
+        return chatbot.get_response(question, user_session_id)
+    except Exception as e:
+        # Clear cache on LLM errors to force reinitialization
+        if "max_length" in str(e) or "InferenceClient" in str(e):
+            st.cache_resource.clear()
+            st.session_state.chatbot = None
+        raise e
 
 def init_session_state():
     """Initialize all session state variables."""
@@ -44,6 +55,9 @@ def init_session_state():
         st.session_state.chat_history = []
     if "user_input" not in st.session_state:
         st.session_state.user_input = ""
+    if "user_session_id" not in st.session_state:
+        import uuid
+        st.session_state.user_session_id = str(uuid.uuid4())
 
 def clear_chat_history():
     """Clear chat history and session state."""
@@ -79,14 +93,31 @@ def handle_input():
         user_question = st.session_state.user_input
         try:
             with st.spinner('Processing your question...'):
-                response = get_cached_response(user_question)
+                response = get_cached_response(user_question, st.session_state.user_session_id)
                 result = {'question': user_question}
                 
-                if isinstance(response, dict) and "photos" in response:
-                    result['response'] = "Here are the photos you requested:"
-                    result['photos'] = response["photos"]
+                # Handle different response types
+                if isinstance(response, dict):
+                    if "photos" in response:
+                        result['response'] = "Here are the photos you requested:"
+                        result['photos'] = response["photos"]
+                    elif "complaint_url" in response:
+                        # Handle complaint responses
+                        result['response'] = response["message"]
+                        result['complaint_url'] = response["complaint_url"]
+                        result['is_complaint'] = True
+                        if 'user_details' in response:
+                            result['user_details'] = response['user_details']
+                        if 'complaint_info' in response:
+                            result['complaint_info'] = response['complaint_info']
+                    elif "text" in response:
+                        result['response'] = response["text"]
+                    elif "message" in response:
+                        result['response'] = response["message"]
+                    else:
+                        result['response'] = str(response)
                 else:
-                    result['response'] = response if isinstance(response, str) else response.get("text", "I'm not sure how to respond to that.")
+                    result['response'] = response if isinstance(response, str) else str(response)
                 
                 st.session_state.chat_history.append(result)
                 st.session_state.chat_history = manage_chat_history(st.session_state.chat_history)
@@ -120,23 +151,32 @@ def main():
         
         st.title("🏢 ARYA - Hostel AI Chatbot")
         st.markdown("""
-        Welcome to the Arya Bhatt Hostel chatbot! I'm here to help you with any questions about the hostel.
-        Feel free to ask about facilities, rules, or any other hostel-related matters.
+        Welcome to the Arya Bhatt Hostel chatbot! I'm here to help you with:
+        
+        🏠 **Hostel Information** - Facilities, rules, and general inquiries
+        🍽️ **Mess Menu** - Daily and weekly meal schedules  
+        📸 **Hostel Photos** - View pictures of rooms, facilities, and common areas
+        📝 **Complaint Registration** - Report issues and get help with complaints
+        
+        Just describe your issue (like "my room fan is not working") and I'll help you register an official complaint!
         """)
+        
+        # Add a sample queries section
+        with st.expander("💡 Sample Questions You Can Ask"):
+            st.markdown("""
+            - "What's today's menu?"
+            - "Show me photos of the rooms"
+            - "My room fan is not working" (for complaints)
+            - "What are the hostel rules?"
+            - "Wi-Fi is not working in my room"
+            - "Show me the mess photos"
+            """)
         
         # Add clear chat button
         if st.button("Clear Chat History"):
             clear_chat_history()
         
-        # Create input form
-        with st.form(key='chat_form', clear_on_submit=True):
-            user_input = st.text_input(
-                "Your Question:",
-                key="user_input"
-            )
-            submit_button = st.form_submit_button("Send", on_click=handle_input)
-        
-        # Display chat history
+        # Display chat history ABOVE the input box
         if st.session_state.chat_history:
             st.write("### Recent Conversations")
             for chat in reversed(st.session_state.chat_history[-5:]):
@@ -144,16 +184,48 @@ def main():
                     st.write(f"**You:** {chat['question']}")
                     st.write(f"**ARYA:** {chat['response']}")
                     
+                    # Handle different response types
                     if 'photos' in chat:
                         display_images(chat['photos'])
                     
+                    if 'is_complaint' in chat and chat['is_complaint']:
+                        if 'complaint_url' in chat:
+                            st.markdown(f"🔗 [**Click here to open the complaint portal**]({chat['complaint_url']})")
+                            
+                            # Create an expander with form details for easy copy-paste
+                            with st.expander("📋 Your Details for Manual Entry (Click to expand)"):
+                                if 'user_details' in chat:
+                                    details = chat['user_details']
+                                    st.markdown("**Copy these details to fill the form manually:**")
+                                    st.code(f"""Email Address: {details['email']}
+Full Name: {details['name']}
+Phone Number: {details['phone']}""")
+                                
+                                if 'complaint_info' in chat:
+                                    info = chat['complaint_info']
+                                    st.markdown("**Problem Details:**")
+                                    st.code(f"""Problem Summary: Room {info['room']} - {info['description']}
+Location: Room {info['room']}
+Category: {info['category']}""")
+                            
+                            st.info("💡 If the form fields are not pre-filled automatically, please copy the details from the expandable section above and paste them manually into the complaint form.")
+                    
                     st.markdown("---")
+        
+        # Create input form AT THE BOTTOM
+        with st.form(key='chat_form', clear_on_submit=True):
+            user_input = st.text_input(
+                "Your Question:",
+                key="user_input",
+                placeholder="Type your message here..."
+            )
+            submit_button = st.form_submit_button("Send", on_click=handle_input)
         
         # Footer
         st.markdown("""
         ---
         💻 Developed and maintained by **Himanshu**  
-        🔄 Last updated: October 2024
+        🔄 Last updated: July 2025
         """, unsafe_allow_html=True)
         
     except Exception as e:
