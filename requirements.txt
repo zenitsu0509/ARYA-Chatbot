@@ -1,6 +1,5 @@
 ﻿streamlit
 python-dotenv
-langchain_huggingface
 langchain-pinecone
 pinecone-client
 langchain-groq
@@ -8,4 +7,3 @@ langchain
 pytz
 sentence-transformers
 requests
-uuid
