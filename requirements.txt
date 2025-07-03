@@ -4,6 +4,7 @@ langchain-pinecone
 pinecone-client
 langchain-groq
 langchain
+langchain-community
 pytz
 sentence-transformers
 requests

@@ -4,7 +4,7 @@ from langchain.vectorstores import VectorStore
 from langchain_pinecone import PineconeVectorStore
 from langchain_pinecone import PineconeEmbeddings
 from pinecone import Pinecone, PineconeException
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_groq import ChatGroq
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
@@ -46,7 +46,7 @@ class AryaChatbot:
             pc = Pinecone(api_key=self.pinecone_api_key, environment=self.pinecone_env)
             index = pc.Index(index_name)
             
-            embeddings = HuggingFaceEmbeddings(
+            embeddings = SentenceTransformerEmbeddings(
                 model_name="intfloat/multilingual-e5-large",
                 encode_kwargs={'normalize_embeddings': True}
             )
