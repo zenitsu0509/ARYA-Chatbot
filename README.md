@@ -1,18 +1,47 @@
 ARYA - Arya Bhatt Hostel Chatbot
 ================================
 
-Welcome to **ARYA**, the official chatbot for Arya Bhatt Hostel. This chatbot is designed to help students and hostel residents with information related to hostel rules, facilities, and other queries. It uses Pinecone for vector search and Hugging Face for language model inference.
+Welcome to **ARYA**, the official chatbot for Arya Bhatt Hostel. This advanced AI chatbot is designed to help students and hostel residents with comprehensive information about hostel facilities, rules, mess menus, photos, and now includes an **intelligent complaint registration system**.
 
-Features
---------
+## 🌟 Features
 
--   Provides accurate and concise answers about hostel facilities and rules.
--   Friendly, professional responses.
--   Real-time question processing.
--   Simple and easy-to-use interface.
+### Core Features
+-   **📝 Intelligent Complaint Registration**: Automatically detects complaints and guides users through the complaint submission process
+-   **🍽️ Mess Menu Information**: Get daily and weekly meal schedules
+-   **📸 Hostel Photo Gallery**: View photos of rooms, facilities, and common areas  
+-   **🏠 Hostel Information**: Detailed information about facilities, rules, and services
+-   **🤖 AI-Powered Responses**: Friendly, professional, and contextual responses
 
-Tech Stack
-----------
+### 🆕 New Complaint System
+-   **Smart Detection**: Automatically identifies complaint-related messages
+-   **Guided Process**: Step-by-step data collection for complaint registration
+-   **Pre-filled Forms**: Generates URLs with user details pre-filled for the official complaint portal
+-   **Category Classification**: Automatically categorizes complaints (Electrical, Plumbing, WiFi, etc.)
+-   **Manual Backup**: Provides copy-paste details if auto-fill doesn't work
+
+## 🚀 How to Use the Complaint System
+
+### Triggering a Complaint
+Simply describe your issue naturally. The AI will detect complaint-related keywords and start the registration process:
+
+**Examples:**
+- "My room fan is not working"
+- "WiFi is down in my room" 
+- "There are cockroaches in my room"
+- "Food quality is very bad"
+- "Water tap is not working"
+
+### Complaint Process
+1. **Issue Detection**: AI recognizes your complaint
+2. **Data Collection**: You'll be asked for:
+   - Full Name
+   - College Email Address  
+   - Phone Number
+   - Room Number
+3. **Summary Generation**: AI creates a complaint summary
+4. **Portal Redirect**: Get a link to the official complaint portal with pre-filled details
+
+## 🛠️ Tech Stack
 
 -   **Streamlit**: For building the front-end of the chatbot.
 -   **Pinecone**: For vector-based document retrieval.
