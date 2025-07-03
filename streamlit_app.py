@@ -151,14 +151,7 @@ def main():
         
         st.title("🏢 ARYA - Hostel AI Chatbot")
         st.markdown("""
-        Welcome to the Arya Bhatt Hostel chatbot! I'm here to help you with:
-        
-        🏠 **Hostel Information** - Facilities, rules, and general inquiries
-        🍽️ **Mess Menu** - Daily and weekly meal schedules  
-        📸 **Hostel Photos** - View pictures of rooms, facilities, and common areas
-        📝 **Complaint Registration** - Report issues and get help with complaints
-        
-        Just describe your issue (like "my room fan is not working") and I'll help you register an official complaint!
+        Welcome to the Arya Bhatt Hostel chatbot! I'm here to help you🤗
         """)
         
         # Add a sample queries section
