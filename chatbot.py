@@ -4,12 +4,14 @@ from langchain.vectorstores import VectorStore
 from langchain_pinecone import PineconeVectorStore
 from langchain_pinecone import PineconeEmbeddings
 from pinecone import Pinecone, PineconeException
-from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpoint
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_groq import ChatGroq
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 import re
 from menu import MessMenu
 from hostel_photos import HostelPhotos
+from complaint_handler import ComplaintHandler
 import logging
 
 # Set up logging
@@ -17,16 +19,17 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class AryaChatbot:
-    def __init__(self, pinecone_api_key: str, pinecone_env: str, huggingface_api: str):
+    def __init__(self, pinecone_api_key: str, pinecone_env: str, groq_api_key: str):
         """Initialize the chatbot with necessary credentials."""
         self.pinecone_api_key = pinecone_api_key
         self.pinecone_env = pinecone_env
-        self.huggingface_api = huggingface_api
+        self.groq_api_key = groq_api_key
         self.vector_store = None
         self.llm = None
         self.qa_chain = None
         self.menu_system = MessMenu()
         self.photo_system = HostelPhotos()
+        self.complaint_handler = ComplaintHandler()
         
     def setup(self):
         """Set up all components of the chatbot."""
@@ -56,21 +59,16 @@ class AryaChatbot:
         except PineconeException as e:
             raise Exception(f"Failed to initialize Pinecone: {str(e)}")
 
-    def setup_llm(self) -> HuggingFaceEndpoint:
+    def setup_llm(self) -> ChatGroq:
         """Initialize the language model."""
         try:
-            repo_id = "mistralai/Mixtral-8x7B-Instruct-v0.1"
-            endpoint_url = f"https://api-inference.huggingface.co/models/{repo_id}"
-            
-            return HuggingFaceEndpoint(
-                endpoint_url=endpoint_url,
-                huggingfacehub_api_token=self.huggingface_api,
-                max_length=512,
+            return ChatGroq(
+                groq_api_key=self.groq_api_key,
+                model_name="llama-3.1-70b-versatile",
                 temperature=0.7,
-                top_k=50,
-                num_return_sequences=1,
-                task="text2text-generation"
+                max_tokens=512
             )
+                
         except Exception as e:
             raise Exception(f"Failed to initialize language model: {str(e)}")
 
@@ -188,12 +186,22 @@ class AryaChatbot:
         return None
 
 
-    def get_response(self, question: str) -> str:
+    def get_response(self, question: str, user_session: str = "default") -> str:
         try:
+            # Check if user is in complaint collection flow
+            if self.complaint_handler.is_in_complaint_flow(user_session):
+                complaint_response = self.complaint_handler.process_complaint_step(user_session, question)
+                return complaint_response
+            
+            # Check if the message contains a complaint
+            if self.complaint_handler.detect_complaint(question):
+                complaint_response = self.complaint_handler.start_complaint_collection(user_session, question)
+                return complaint_response
+            
             # Check if the question is related to the mess menu
             menu_response = self.handle_menu_query(question)
             if menu_response:
-                return menu_response
+                return {"text": menu_response}
             
             # Check if the question is related to photos
             photo_paths = self.photo_system.handle_photo_query(question)
@@ -210,6 +218,16 @@ class AryaChatbot:
             
         except Exception as e:
             raise Exception(f"Error getting response: {str(e)}")
+
+    def handle_complaint_command(self, command: str, user_session: str = "default") -> Dict:
+        """Handle specific complaint-related commands."""
+        command_lower = command.lower().strip()
+        
+        if command_lower in ['cancel complaint', 'stop complaint', 'cancel']:
+            response = self.complaint_handler.cancel_complaint(user_session)
+            return {"text": response}
+        
+        return {"text": "I didn't understand that command. You can say 'cancel complaint' to stop the current complaint registration."}
 
  
 
