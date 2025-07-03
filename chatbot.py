@@ -2,7 +2,6 @@ import os
 from typing import Dict, List
 from langchain.vectorstores import VectorStore
 from langchain_pinecone import PineconeVectorStore
-from langchain_pinecone import PineconeEmbeddings
 from pinecone import Pinecone, PineconeException
 from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_groq import ChatGroq
