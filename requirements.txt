@@ -2,8 +2,9 @@
 python-dotenv
 langchain-pinecone
 pinecone-client
-langchain-huggingface
-transformers
+langchain-groq
 langchain
 pytz
 sentence-transformers
+requests
+uuid
