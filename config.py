@@ -19,7 +19,7 @@ def load_config():
     required_vars = [
         'PINECONE_API_KEY',
         'PINECONE_ENV',
-        'HUGGING_FACE_API'
+        'GROQ_API_KEY'
     ]
 
     # Try getting variables from different sources
