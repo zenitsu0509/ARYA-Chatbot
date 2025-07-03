@@ -7,6 +7,9 @@ from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_groq import ChatGroq
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
+from langchain.agents import AgentExecutor, create_react_agent, tool
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.tools.retriever import create_retriever_tool
 import re
 from menu import MessMenu
 from hostel_photos import HostelPhotos
@@ -25,7 +28,7 @@ class AryaChatbot:
         self.groq_api_key = groq_api_key
         self.vector_store = None
         self.llm = None
-        self.qa_chain = None
+        self.agent_executor = None  # Changed from qa_chain
         self.menu_system = MessMenu()
         self.photo_system = HostelPhotos()
         self.complaint_handler = ComplaintHandler()
@@ -35,7 +38,7 @@ class AryaChatbot:
         try:
             self.vector_store = self.setup_pinecone()
             self.llm = self.setup_llm()
-            self.qa_chain = self.create_qa_chain()
+            self.agent_executor = self.create_agent()  # Changed from create_qa_chain
         except Exception as e:
             raise Exception(f"Failed to initialize chatbot: {str(e)}")
         
@@ -71,152 +74,98 @@ class AryaChatbot:
         except Exception as e:
             raise Exception(f"Failed to initialize language model: {str(e)}")
 
-    def create_qa_chain(self) -> RetrievalQA:
-        """Create the question-answering chain with custom prompt."""
-        try:
-            template = """
-            You are Arya, the official bot of Arya Bhatt Hostel. Your role is to provide accurate and helpful information about the hostel.
+    def create_agent(self) -> AgentExecutor:
+        """Create an agent that can use tools to answer questions."""
+        
+        retriever = self.vector_store.as_retriever(search_kwargs={'k': 3})
 
-            Context information from the knowledge base:
-            {context}
+        # Create a tool for general knowledge retrieval
+        retriever_tool = create_retriever_tool(
+            retriever,
+            "hostel_information_retriever",
+            "Searches and returns information about Arya Bhatt Hostel. Use it for questions about hostel rules, facilities, contact information, etc."
+        )
 
-            Guidelines:
-            - Provide concise, accurate answers based on the given context
-            - If information is not available in the context, politely say you don't know
-            - Be friendly and professional in your responses
-            - Keep responses brief but informative
-
-            Question: {question}
-            Answer:
+        # Create a tool for the mess menu
+        menu_tool = tool(
+            name="get_mess_menu",
+            func=self.menu_system.get_menu,
+            description=""":
+            A tool to get the hostel mess menu.
+            :param day: The day to get the menu for. Can be a day of the week (e.g., 'Monday'), 'today', 'week', or None.
+                        If None or 'today', returns the current meal's menu.
+                        If 'week', returns the full weekly menu.
+            :return: A string containing the requested menu information.
             """
-            
-            prompt = PromptTemplate(template=template, input_variables=["context", "question"])
-            
-            return RetrievalQA.from_chain_type(
-                llm=self.llm,
-                chain_type="stuff",
-                retriever=self.vector_store.as_retriever(search_kwargs={'k': 3}),
-                return_source_documents=False,
-                chain_type_kwargs={"prompt": prompt}
-            )
-        except Exception as e:
-            raise Exception(f"Failed to create QA chain: {str(e)}")
+        )
 
-    def handle_menu_query(self, question: str) -> str:
-        """Handle questions related to the mess menu."""
-        try:
-            question_lower = question.lower()
-            logger.debug(f"Handling menu query: {question_lower}")
+        # Create a tool for hostel photos
+        photos_tool = tool(
+            name="get_hostel_photos",
+            func=self.photo_system.get_photos,
+            description=""":
+            A tool to get paths to hostel photos.
+            :param category: The category of photos to get. Must be one of ['rooms', 'mess', 'facilities', 'exterior'].
+            :param subcategory: The optional subcategory of photos.
+                                For 'mess', can be ['dining'].
+                                For 'facilities', can be ['sports'].
+                                For 'exterior', can be ['building', 'entrance', 'garden'].
+            :return: A list of photo paths.
+            """
+        )
 
-            # Handle current menu query
-            if re.search(r"(current menu|today menu|what's for|what is for|what are we eating|mess menu|food|"
-                        r"today's food|what's being served|what is on the menu|what are we having|"
-                        r"what are we eating today|what's on today's menu|what's on the menu for today|"
-                        r"what are we getting in the mess|what food is in the mess|what is for lunch|"
-                        r"what is for dinner|today's lunch menu|today's dinner menu)", question_lower):
-                logger.debug("Fetching current menu")
-                return self.menu_system.get_current_menu()
+        tools = [retriever_tool, menu_tool, photos_tool]
 
-            # Handle weekly menu query
-            if re.search(r"week(ly)? menu", question_lower):
-                logger.debug("Fetching weekly menu")
-                weekly_menu = self.menu_system.get_full_week_menu()
-                if weekly_menu:
-                    return self.menu_system.format_full_menu(weekly_menu)
-                return "Sorry, I couldn't retrieve the weekly menu at the moment."
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are Arya, a helpful AI assistant for the Arya Bhatt Hostel.
 
-            # Handle specific day and time query
-            days_of_week = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-            meals = ['breakfast', 'lunch', 'dinner', 'dessert', 'morning', 'night']
-            
-            day_found = None
-            meal_found = None
+You have access to the following tools:
+- `get_mess_menu`: To get the mess menu for a specific day, the current meal, or the whole week.
+- `get_hostel_photos`: To get photos of the hostel, including rooms, mess, facilities, and exterior.
+- `hostel_information_retriever`: To get general information about the hostel.
 
-            # Search for day and meal in the question
-            for day in days_of_week:
-                if day in question_lower:
-                    day_found = day.capitalize()
-                    break
+Your primary goal is to assist users by answering their questions accurately.
+- For photo requests, call the `get_hostel_photos` tool and return the list of photo paths.
+- For menu requests, call the `get_mess_menu` tool.
+- For all other questions about the hostel, use the `hostel_information_retriever` tool.
+- If you don't know the answer or the tool doesn't provide the right information, just say that you don't know.
+"""),
+            MessagesPlaceholder(variable_name="chat_history", optional=True),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad")
+        ])
 
-            for meal in meals:
-                if meal in question_lower:
-                    meal_found = meal
-                    break
-
-            if day_found:
-                logger.debug(f"Fetching menu for {day_found}")
-                day_menu = self.menu_system.get_menu_for_day(day_found)
-                if day_menu:
-                    # If a specific meal is mentioned
-                    if meal_found:
-                        logger.debug(f"Fetching {meal_found} for {day_found}")
-                        meal_map = {
-                            'breakfast': 'morning_menu',
-                            'morning': 'morning_menu',  
-                            'lunch': 'evening_menu',
-                            'dinner': 'night_menu',
-                            'night': 'night_menu',  
-                            'dessert': 'dessert'
-                        }
-                        specific_meal = day_menu.get(meal_map.get(meal_found))
-                        if specific_meal and specific_meal != 'OFF':
-                            return f"📅 {day_found.capitalize()}'s {meal_found.capitalize()}: {specific_meal}"
-                        return f"Sorry, no {meal_found} is available for {day_found}."
-
-                    # If no specific meal is mentioned, return the full day's menu
-                    response = [
-                        f"📅 Menu for {day_menu['day_of_week']}:",
-                        f"🌅 Breakfast: {day_menu['morning_menu']}",
-                        f"🌞 Lunch: {day_menu['evening_menu']}",
-                        f"🌙 Dinner: {day_menu['night_menu']}"
-                    ]
-                    
-                    if day_menu['dessert'] != 'OFF':
-                        response.append(f"🍨 Dessert: {day_menu['dessert']}")
-
-                    return "\n".join(response)
-                
-                return f"Sorry, I couldn't retrieve the menu for {day_found}."
-
-        except Exception as e:
-            logger.error(f"Error handling menu query: {str(e)}")
-            return "Sorry, I couldn't retrieve the menu at the moment."
-
-        return None
-
+        agent = create_react_agent(self.llm, tools, prompt)
+        return AgentExecutor(agent=agent, tools=tools, verbose=True)
 
     def get_response(self, question: str, user_session: str = "default") -> str:
         try:
-            # Check if user is in complaint collection flow
+            # Complaint handling remains a priority
             if self.complaint_handler.is_in_complaint_flow(user_session):
-                complaint_response = self.complaint_handler.process_complaint_step(user_session, question)
-                return complaint_response
+                return self.complaint_handler.process_complaint_step(user_session, question)
             
-            # Check if the message contains a complaint
             if self.complaint_handler.detect_complaint(question):
-                complaint_response = self.complaint_handler.start_complaint_collection(user_session, question)
-                return complaint_response
+                return self.complaint_handler.start_complaint_collection(user_session, question)
             
-            # Check if the question is related to the mess menu
-            menu_response = self.handle_menu_query(question)
-            if menu_response:
-                return {"text": menu_response}
+            if not self.agent_executor:
+                raise Exception("Chatbot agent not properly initialized. Call setup() first.")
+
+            # Invoke the agent to get a response
+            response = self.agent_executor.invoke({"input": question})
             
-            # Check if the question is related to photos
-            photo_paths = self.photo_system.handle_photo_query(question)
-            if photo_paths:
-                # Return as list of image paths
-                return {"photos": photo_paths}
+            # The agent's output might be a string or a list of photo paths
+            output = response['output']
+
+            # Check if the output from the agent is a list of photo paths
+            if isinstance(output, list) and all(isinstance(item, str) and ('.jpg' in item or '.png' in item) for item in output):
+                return {"photos": output}
             
-            # Handle regular QA response
-            if not self.qa_chain:
-                raise Exception("Chatbot not properly initialized. Call setup() first.")
-            
-            response = self.qa_chain.invoke(question)
-            return {"text": response['result']}
-            
+            return {"text": str(output)}
+
         except Exception as e:
-            raise Exception(f"Error getting response: {str(e)}")
+            logger.error(f"Error in get_response: {e}")
+            # Providing a more user-friendly error message
+            return {"text": "Sorry, I encountered an error while processing your request. Please try again."}
 
     def handle_complaint_command(self, command: str, user_session: str = "default") -> Dict:
         """Handle specific complaint-related commands."""
@@ -228,9 +177,6 @@ class AryaChatbot:
         
         return {"text": "I didn't understand that command. You can say 'cancel complaint' to stop the current complaint registration."}
 
- 
-
-
-
 if __name__ == "__main__":
-    test_handle_menu_query()
+    # You might want to update this for testing the agent
+    pass
