@@ -79,7 +79,7 @@ def display_images(photo_paths):
             if os.path.exists(path):
                 try:
                     with Image.open(path) as img:
-                        cols[idx % 3].image(img, caption=f"Image {idx + 1}", use_column_width=True)
+                        cols[idx % 3].image(img, caption=f"Image {idx + 1}", use_container_width=True)
                 except Exception as e:
                     cols[idx % 3].error(f"Error loading image: {str(e)}")
             else:
