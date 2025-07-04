@@ -1,103 +1,86 @@
-ARYA - Arya Bhatt Hostel Chatbot
-================================
+# ARYA - Arya Bhatt Hostel AI Agent
 
-Welcome to **ARYA**, the official chatbot for Arya Bhatt Hostel. This advanced AI chatbot is designed to help students and hostel residents with comprehensive information about hostel facilities, rules, mess menus, photos, and now includes an **intelligent complaint registration system**.
+Welcome to **ARYA**, the official AI agent for Arya Bhatt Hostel. This advanced assistant is designed to help students and residents with comprehensive information about hostel facilities, rules, mess menus, and photos, and includes an intelligent complaint registration system.
 
 ## 🌟 Features
 
-### Core Features
--   **📝 Intelligent Complaint Registration**: Automatically detects complaints and guides users through the complaint submission process
--   **🍽️ Mess Menu Information**: Get daily and weekly meal schedules
--   **📸 Hostel Photo Gallery**: View photos of rooms, facilities, and common areas  
--   **🏠 Hostel Information**: Detailed information about facilities, rules, and services
--   **🤖 AI-Powered Responses**: Friendly, professional, and contextual responses
+### Core Architecture
+-   **🤖 ReAct Agent Framework**: Built on an advanced Reason and Act (ReAct) agent architecture, allowing the AI to dynamically choose the best tool to respond to user queries.
+-   **🚀 High-Performance Backend**: Powered by **Groq** for ultra-low latency LLM inference, ensuring fast and responsive interactions.
+-   **🧠 Intelligent Toolset**: Equipped with a suite of specialized tools for:
+    -   **🍽️ Mess Menu**: Fetches the daily, weekly, or specific-day mess menu.
+    -   **📸 Hostel Photos**: Retrieves photos of rooms, the mess, facilities, and the building exterior.
+    -   **📝 Complaint Registration**: Guides users through a multi-step complaint submission process.
+    -   **ℹ️ General Information**: Answers all other questions using a vector-based knowledge base.
 
-### 🆕 New Complaint System
--   **Smart Detection**: Automatically identifies complaint-related messages
--   **Guided Process**: Step-by-step data collection for complaint registration
--   **Pre-filled Forms**: Generates URLs with user details pre-filled for the official complaint portal
--   **Category Classification**: Automatically categorizes complaints (Electrical, Plumbing, WiFi, etc.)
--   **Manual Backup**: Provides copy-paste details if auto-fill doesn't work
-
-## 🚀 How to Use the Complaint System
-
-### Triggering a Complaint
-Simply describe your issue naturally. The AI will detect complaint-related keywords and start the registration process:
-
-**Examples:**
-- "My room fan is not working"
-- "WiFi is down in my room" 
-- "There are cockroaches in my room"
-- "Food quality is very bad"
-- "Water tap is not working"
-
-### Complaint Process
-1. **Issue Detection**: AI recognizes your complaint
-2. **Data Collection**: You'll be asked for:
-   - Full Name
-   - College Email Address  
-   - Phone Number
-   - Room Number
-3. **Summary Generation**: AI creates a complaint summary
-4. **Portal Redirect**: Get a link to the official complaint portal with pre-filled details
+### User-Facing Features
+-   **Smart Complaint Detection**: Automatically identifies complaint-related messages and initiates the registration workflow.
+-   **Pre-filled Forms**: Generates URLs with user details pre-filled for the official complaint portal.
+-   **User-Friendly Interface**: A clean and intuitive UI built with Streamlit, featuring chat history and dynamic display of text and images.
 
 ## 🛠️ Tech Stack
 
--   **Streamlit**: For building the front-end of the chatbot.
--   **Pinecone**: For vector-based document retrieval.
--   **Hugging Face**: For language model and text generation.
--   **LangChain**: To manage LLM chains and document search.
--   **Python**: The core language used.
+-   **Frontend**: **Streamlit**
+-   **LLM Inference**: **Groq**
+-   **Vector Database**: **Pinecone**
+-   **Embeddings**: **Sentence-Transformers**
+-   **Core Framework**: **LangChain** (ReAct Agent, Tools, Chains)
+-   **Language**: **Python**
 
-Setup Instructions
-------------------
+## 🚀 Setup Instructions
 
-### 1\. Clone the Repository
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/zenitsu0509/ARYA_Chatbot.git
 cd ARYA_Chatbot
 ```
 
-### 2\. Install Dependencies
+### 2. Install Dependencies
 
-Ensure that you have Python 3.8+ installed. You can install the required Python packages using:
-```
+Ensure you have Python 3.8+ installed. Install the required packages using:
+```bash
 pip install -r requirements.txt
 ```
 
-### 3\. Set Up Environment Variables
+### 3. Set Up Environment Variables
 
-You will need to configure environment variables to access the necessary APIs. Create a `.env` file in the project directory and add the following keys:
+Create a `.env` file in the project root and add the following keys:
+
 ```
 PINECONE_API_KEY=<your-pinecone-api-key>
 PINECONE_ENV=<your-pinecone-environment>
-HUGGING_FACE_API=<your-huggingface-api-key>
+GROQ_API_KEY=<your-groq-api-key>
 ```
 
-### 4\. Configure the Index
+### 4. Configure the Pinecone Index
 
-Make sure you have a **Pinecone** index created and properly configured with the documents for Arya Bhatt Hostel information.
+Make sure you have a **Pinecone** index created and populated with the knowledge base documents for Arya Bhatt Hostel.
 
-### 5\. Run the Application
+### 5. Run the Application
 
-You can start the Streamlit app using the following command:
+You can start the Streamlit app with the following command:
 
 ```bash
-streamlit run app.py
+streamlit run streamlit_app.py
 ```
 
-The application will launch locally, and you can access the chatbot via your browser at `http://localhost:8501`.
+The application will be available at `http://localhost:8501`.
 
-How It Works
-------------
+## 🤔 How It Works
 
-1.  **Pinecone Vector Store**: Retrieves relevant information from the hostel knowledge base using vector embeddings.
-2.  **Hugging Face LLM**: Generates human-like responses based on the retrieved context and the user's question.
-3.  **Streamlit Interface**: Provides an intuitive and responsive front-end for users to interact with the bot.
+1.  **User Input**: The user asks a question in the Streamlit interface.
+2.  **Agentic Core**: The query is sent to the **LangChain ReAct Agent**.
+3.  **Tool Selection**: The agent analyzes the input and decides which tool to use:
+    -   For "What's for dinner?", it calls the `get_mess_menu` tool.
+    -   For "Show me the rooms", it calls the `get_hostel_photos` tool.
+    -   For "What are the library hours?", it uses the `hostel_information_retriever` tool.
+    -   For "My fan is broken", it initiates the complaint handling flow.
+4.  **Tool Execution**: The selected tool is executed.
+5.  **Response Generation**: The **Groq LLM** processes the tool's output and generates a final, user-friendly response.
+6.  **Dynamic Output**: The response, whether text or a list of images, is displayed in the UI.
 
-Project Structure
------------------
+## Project Structure
 
 ```bash
 arya-hostel-chatbot/
@@ -110,30 +93,26 @@ arya-hostel-chatbot/
 └── .gitignore            # Files to be ignored in version control
 ```
 
-Key Functions
--------------
+## Key Functions
 
 -   **setup_pinecone**: Initializes the Pinecone vector store for document search.
 -   **setup_llm**: Configures the Hugging Face language model used for generating responses.
 -   **create_qa_chain**: Combines the vector store with the LLM to create the question-answering logic.
 -   **main**: Manages the Streamlit interface and user interactions.
 
-Customization
--------------
+## Customization
 
 You can modify the following parameters to customize ARYA:
 
 -   **Language Model**: Change the Hugging Face model by updating the `repo_id` in the `setup_llm` function.
 -   **Index Name**: Change the Pinecone index by modifying the `index_name` in `setup_pinecone`.
 
-Future Enhancements
--------------------
+## Future Enhancements
 
 -   **Admin Interface**: Allow hostel admins to update or add new knowledge base entries.
 -   **Multilingual Support**: Support for other languages to assist international students.
 
-Contributing
-------------
+## Contributing
 
 If you'd like to contribute to the development of this project:
 
@@ -141,8 +120,7 @@ If you'd like to contribute to the development of this project:
 2.  Create a new branch for your feature/bugfix.
 3.  Submit a pull request with a detailed explanation of your changes.
 
-License
--------
+## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
 
