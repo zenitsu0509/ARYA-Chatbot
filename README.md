@@ -127,4 +127,4 @@ This project is licensed under the MIT License. See the LICENSE file for details
 * * * * *
 
 💻 Developed and maintained by **Himanshu Gangwar**\
-🔄 Last updated: October 2024
+🔄 Last updated: july 2025
