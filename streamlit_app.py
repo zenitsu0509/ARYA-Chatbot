@@ -218,7 +218,7 @@ Category: {info['category']}""")
         st.markdown("""
         ---
         💻 Developed and maintained by **Himanshu**  
-        🔄 Last updated: July 2025
+        🔄 Last updated: November 2025
         """, unsafe_allow_html=True)
         
     except Exception as e:

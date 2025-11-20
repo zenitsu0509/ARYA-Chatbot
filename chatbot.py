@@ -1,13 +1,26 @@
 import os
+import json
 from typing import Dict, List
-from langchain.vectorstores import VectorStore
 from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone, PineconeException
 from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_groq import ChatGroq
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
-from langchain.agents import AgentExecutor, create_react_agent, tool
+
+# Import agent utilities with fallbacks to support multiple LangChain versions.
+try:
+    from langchain.agents import AgentExecutor
+except ImportError:  # pragma: no cover
+    from langchain.agents.agent import AgentExecutor  # type: ignore
+
+try:
+    from langchain.agents import create_react_agent
+except ImportError:  # pragma: no cover
+    from langchain.agents.react.agent import create_react_agent  # type: ignore
+
+try:
+    from langchain.tools import Tool
+except ImportError:  # pragma: no cover
+    from langchain.agents import Tool  # type: ignore
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.tools.retriever import create_retriever_tool
 import re
@@ -42,7 +55,7 @@ class AryaChatbot:
         except Exception as e:
             raise Exception(f"Failed to initialize chatbot: {str(e)}")
         
-    def setup_pinecone(self, index_name: str = "arya-index-o") -> VectorStore:
+    def setup_pinecone(self, index_name: str = "arya-index-o") -> PineconeVectorStore:
         """Initialize Pinecone and return vector store."""
         try:
             pc = Pinecone(api_key=self.pinecone_api_key, environment=self.pinecone_env)
@@ -86,57 +99,75 @@ class AryaChatbot:
             "Searches and returns information about Arya Bhatt Hostel. Use it for questions about hostel rules, facilities, contact information, etc."
         )
 
-        # Create a tool for the mess menu
-        menu_tool = tool(
+        def _get_mess_menu(day: str = "today") -> str:
+            """Return formatted mess menu details for the requested day."""
+            cleaned_day = day.strip() if day else None
+            return self.menu_system.get_menu(cleaned_day)
+
+        menu_tool = Tool(
             name="get_mess_menu",
-            func=self.menu_system.get_menu,
-            description=""":
-            A tool to get the hostel mess menu.
-            :param day: The day to get the menu for. Can be a day of the week (e.g., 'Monday'), 'today', 'week', or None.
-                        If None or 'today', returns the current meal's menu.
-                        If 'week', returns the full weekly menu.
-            :return: A string containing the requested menu information.
-            """
+            func=_get_mess_menu,
+            description=(
+                "Use this to retrieve the hostel mess menu. "
+                "Pass a day of the week (e.g., 'Monday'), 'today', or 'week' to get the appropriate menu."
+            )
         )
 
-        # Create a tool for hostel photos
-        photos_tool = tool(
+        def _get_hostel_photos(request: str) -> str:
+            """Return JSON with photo paths related to the user's request."""
+            query = request or ""
+            photos = self.photo_system.handle_photo_query(query)
+            if not photos:
+                photos = []
+            return json.dumps({"photos": photos})
+
+        photos_tool = Tool(
             name="get_hostel_photos",
-            func=self.photo_system.get_photos,
-            description=""":
-            A tool to get paths to hostel photos.
-            :param category: The category of photos to get. Must be one of ['rooms', 'mess', 'facilities', 'exterior'].
-            :param subcategory: The optional subcategory of photos.
-                                For 'mess', can be ['dining'].
-                                For 'facilities', can be ['sports'].
-                                For 'exterior', can be ['building', 'entrance', 'garden'].
-            :return: A list of photo paths.
-            """
+            func=_get_hostel_photos,
+            description=(
+                "Use this to fetch hostel photo paths. Provide the user's request (e.g., 'show rooms photos'). "
+                "The tool returns JSON containing the photo paths."
+            )
         )
 
         tools = [retriever_tool, menu_tool, photos_tool]
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are Arya, a helpful AI assistant for the Arya Bhatt Hostel.
+        # Use PromptTemplate for ReAct agent (required by create_react_agent)
+        from langchain_core.prompts import PromptTemplate
+        
+        template = """You are Arya, a helpful AI assistant for the Arya Bhatt Hostel.
 
 You have access to the following tools:
-- `get_mess_menu`: To get the mess menu for a specific day, the current meal, or the whole week.
-- `get_hostel_photos`: To get photos of the hostel, including rooms, mess, facilities, and exterior.
-- `hostel_information_retriever`: To get general information about the hostel.
 
-Your primary goal is to assist users by answering their questions accurately.
-- For photo requests, call the `get_hostel_photos` tool and return the list of photo paths.
-- For menu requests, call the `get_mess_menu` tool.
-- For all other questions about the hostel, use the `hostel_information_retriever` tool.
-- If you don't know the answer or the tool doesn't provide the right information, just say that you don't know.
-"""),
-            MessagesPlaceholder(variable_name="chat_history", optional=True),
-            ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad")
-        ])
+{tools}
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+Guidelines:
+- For photo requests, call the `get_hostel_photos` tool and include the returned photo paths in the final answer.
+- For menu-related queries, call `get_mess_menu`.
+- For all other hostel information, rely on `hostel_information_retriever`.
+- If the information is unavailable, politely say you don't know.
+- Always provide clean, user-friendly responses without internal reasoning tags.
+
+Begin!
+
+Question: {input}
+Thought:{agent_scratchpad}"""
+
+        prompt = PromptTemplate.from_template(template)
 
         agent = create_react_agent(self.llm, tools, prompt)
-        return AgentExecutor(agent=agent, tools=tools, verbose=True)
+        return AgentExecutor(agent=agent, tools=tools, verbose=True, return_intermediate_steps=True)
 
     def get_response(self, question: str, user_session: str = "default") -> str:
         try:
@@ -152,13 +183,19 @@ Your primary goal is to assist users by answering their questions accurately.
 
             # Invoke the agent to get a response
             response = self.agent_executor.invoke({"input": question})
-            
-            # The agent's output might be a string or a list of photo paths
             output = response['output']
 
-            # Check if the output from the agent is a list of photo paths
-            if isinstance(output, list) and all(isinstance(item, str) and ('.jpg' in item or '.png' in item) for item in output):
-                return {"photos": output}
+            # Look for any photo tool usage to surface actual image paths
+            intermediate_steps = response.get("intermediate_steps", [])
+            for action, observation in reversed(intermediate_steps):
+                try:
+                    if getattr(action, "tool", "") == "get_hostel_photos":
+                        payload = json.loads(observation)
+                        photos = payload.get("photos") if isinstance(payload, dict) else None
+                        if photos:
+                            return {"photos": photos, "text": str(output)}
+                except json.JSONDecodeError:
+                    continue
             
             return {"text": str(output)}
 
