@@ -1,6 +1,6 @@
 import os
 import json
-from typing import Dict, List
+from typing import Dict, List, Optional
 from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone, PineconeException
 from langchain_community.embeddings import SentenceTransformerEmbeddings
@@ -34,6 +34,17 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class AryaChatbot:
+    SMALLTALK_RESPONSES = [
+        (("hi", "hii", "hello", "hey", "hay", "hola", "namaste"),
+         "Hi there! I'm Arya, your hostel assistant. How can I help you today?"),
+        (("good morning", "good afternoon", "good evening"),
+         "Hello! I'm Arya. Let me know how I can assist you with hostel queries."),
+        (("thank you", "thanks", "tysm"),
+         "You're welcome! If you need anything else about the hostel, just let me know."),
+        (("who are you", "who r u", "what are you"),
+         "I'm Arya, the Arya Bhatt Hostel AI assistant. Ask me about rooms, mess menu, complaints, or general info!"),
+    ]
+
     def __init__(self, pinecone_api_key: str, pinecone_env: str, groq_api_key: str):
         """Initialize the chatbot with necessary credentials."""
         self.pinecone_api_key = pinecone_api_key
@@ -46,6 +57,21 @@ class AryaChatbot:
         self.photo_system = HostelPhotos()
         self.complaint_handler = ComplaintHandler()
         
+    def _handle_smalltalk(self, text: str) -> Optional[Dict[str, str]]:
+        """Return canned responses for greetings or small talk to avoid unnecessary tool calls."""
+        if not text:
+            return None
+
+        normalized = text.lower().strip()
+        if not normalized:
+            return None
+
+        for phrases, response in self.SMALLTALK_RESPONSES:
+            for phrase in phrases:
+                if normalized == phrase or normalized.startswith(f"{phrase} "):
+                    return {"text": response}
+        return None
+
     def setup(self):
         """Set up all components of the chatbot."""
         try:
@@ -80,8 +106,8 @@ class AryaChatbot:
             return ChatGroq(
                 groq_api_key=self.groq_api_key,
                 model_name="llama-3.1-8b-instant",
-                temperature=0.7,
-                max_tokens=512
+                temperature=0.3,
+                max_tokens=2048
             )
                 
         except Exception as e:
@@ -101,15 +127,21 @@ class AryaChatbot:
 
         def _get_mess_menu(day: str = "today") -> str:
             """Return formatted mess menu details for the requested day."""
-            cleaned_day = day.strip() if day else None
+            # Clean input - remove parameter names if LLM includes them
+            cleaned_day = day.strip() if day else "today"
+            # Handle cases like "day='today'", "'today'", or "day=today"
+            cleaned_day = cleaned_day.replace("day=", "").strip("'\"").strip()
+            if not cleaned_day:
+                cleaned_day = "today"
             return self.menu_system.get_menu(cleaned_day)
 
         menu_tool = Tool(
             name="get_mess_menu",
             func=_get_mess_menu,
             description=(
-                "Use this to retrieve the hostel mess menu. "
-                "Pass a day of the week (e.g., 'Monday'), 'today', or 'week' to get the appropriate menu."
+                "Get the mess menu. Input should be just the day name: 'today' for current menu, "
+                "'Monday'/'Tuesday'/etc for specific day, or 'week' for full week. "
+                "Examples: today, Monday, week"
             )
         )
 
@@ -141,23 +173,28 @@ You have access to the following tools:
 
 {tools}
 
-Use the following format:
+Use this EXACT format:
 
 Question: the input question you must answer
 Thought: you should always think about what to do
 Action: the action to take, should be one of [{tool_names}]
-Action Input: the input to the action
+Action Input: the input value (just simple text, no parameter names)
 Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
+... (repeat Thought/Action/Input/Observation ONLY if needed)
 Thought: I now know the final answer
 Final Answer: the final answer to the original input question
 
-Guidelines:
-- For photo requests, call the `get_hostel_photos` tool and include the returned photo paths in the final answer.
-- For menu-related queries, call `get_mess_menu`.
-- For all other hostel information, rely on `hostel_information_retriever`.
-- If the information is unavailable, politely say you don't know.
-- Always provide clean, user-friendly responses without internal reasoning tags.
+CRITICAL RULES:
+1. Action Input must be simple: "today" NOT "day='today'".
+2. Use at most 2 tool calls per user question. If you are still unsure, answer politely and ask the user to clarify.
+3. Once you get a successful Observation, immediately provide Final Answer.
+4. ALWAYS end with "Final Answer: <answer>".
+5. Don't repeat the same action with the same input.
+
+Examples:
+- For "current menu": Action Input is "today"
+- For "Monday menu": Action Input is "Monday"
+- For "show rooms": Action Input is "rooms"
 
 Begin!
 
@@ -166,11 +203,43 @@ Thought:{agent_scratchpad}"""
 
         prompt = PromptTemplate.from_template(template)
 
+        # Custom error handler for parsing errors
+        def handle_parse_error(error) -> str:
+            """Handle parsing errors by returning a helpful message."""
+            error_msg = str(error)
+            # Extract the actual LLM output if available
+            if "Could not parse LLM output:" in error_msg:
+                # The output is usually after this phrase
+                import re
+                match = re.search(r"Could not parse LLM output: `(.+?)`", error_msg, re.DOTALL)
+                if match:
+                    llm_output = match.group(1).strip()
+                    # Return the output as Final Answer since LLM didn't format correctly
+                    return f"Final Answer: {llm_output}"
+            return "Final Answer: I apologize, but I encountered an error processing your request. Please try rephrasing your question."
+
         agent = create_react_agent(self.llm, tools, prompt)
-        return AgentExecutor(agent=agent, tools=tools, verbose=True, return_intermediate_steps=True)
+        # Note: this AgentExecutor version does not support early_stopping_method
+        return AgentExecutor(
+            agent=agent,
+            tools=tools,
+            verbose=True,
+            return_intermediate_steps=True,
+            max_iterations=10,
+            handle_parsing_errors=handle_parse_error,
+        )
 
     def get_response(self, question: str, user_session: str = "default") -> str:
         try:
+            # Handle greetings and small talk without invoking the agent
+            smalltalk_response = self._handle_smalltalk(question)
+            if smalltalk_response:
+                return smalltalk_response
+
+            # Very short/unclear inputs are handled directly to avoid wasting tool calls
+            if not question or len(question.strip()) < 3:
+                return {"text": "Could you please clarify your question a bit more?"}
+
             # Complaint handling remains a priority
             if self.complaint_handler.is_in_complaint_flow(user_session):
                 return self.complaint_handler.process_complaint_step(user_session, question)
@@ -183,7 +252,21 @@ Thought:{agent_scratchpad}"""
 
             # Invoke the agent to get a response
             response = self.agent_executor.invoke({"input": question})
-            output = response['output']
+            output = response.get('output', '')
+            
+            # Handle case where agent hit iteration limit
+            if not output or "Agent stopped" in str(output):
+                # Try to extract useful info from intermediate steps
+                intermediate_steps = response.get("intermediate_steps", [])
+                if intermediate_steps:
+                    last_action, last_observation = intermediate_steps[-1]
+                    # If the last observation looks like a valid response, use it
+                    if last_observation and len(str(last_observation)) > 20:
+                        output = str(last_observation)
+                    else:
+                        output = "I apologize, but I couldn't complete that request. Please try rephrasing."
+                else:
+                    output = "I'm sorry, I couldn't process that request."
 
             # Look for any photo tool usage to surface actual image paths
             intermediate_steps = response.get("intermediate_steps", [])

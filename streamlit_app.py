@@ -141,6 +141,8 @@ def main():
             page_icon="🏢",
             layout="centered"
         )
+
+        # Using Streamlit's default styling for a clean look
         
         # Load cached config
         config = cached_load_config()
@@ -149,10 +151,11 @@ def main():
         if st.session_state.chatbot is None:
             st.session_state.chatbot = initialize_chatbot(config)
         
-        st.title("🏢 ARYA - Hostel AI Chatbot")
-        st.markdown("""
-        Welcome to the Arya Bhatt Hostel chatbot! I'm here to help you🤗
-        """)
+        st.markdown("<h1 style='font-weight:600; font-size:1.8rem; margin-bottom:0.2rem;'>🏢 ARYA - Hostel AI Chatbot</h1>", unsafe_allow_html=True)
+        st.markdown(
+            "<p style='color:#9ca3af; font-size:0.95rem; margin-bottom:1.2rem;'>Ask anything about the hostel, mess menu, rooms, facilities, or complaints.</p>",
+            unsafe_allow_html=True,
+        )
         
         # Add a sample queries section
         with st.expander("💡 Sample Questions You Can Ask"):
@@ -169,7 +172,7 @@ def main():
         if st.button("Clear Chat History"):
             clear_chat_history()
         
-        # Display chat history ABOVE the input box
+        # Display chat history ABOVE the input box (newest first)
         if st.session_state.chat_history:
             st.write("### Recent Conversations")
             for chat in reversed(st.session_state.chat_history[-5:]):
@@ -204,7 +207,7 @@ Category: {info['category']}""")
                             st.info("💡 If the form fields are not pre-filled automatically, please copy the details from the expandable section above and paste them manually into the complaint form.")
                     
                     st.markdown("---")
-        
+
         # Create input form AT THE BOTTOM
         with st.form(key='chat_form', clear_on_submit=True):
             user_input = st.text_input(
